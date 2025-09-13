@@ -1,0 +1,104 @@
+import { GoogleGenAI } from "@google/genai";
+
+if (!process.env.API_KEY) {
+    throw new Error("API_KEY environment variable is not set");
+}
+
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+const getSystemPrompt = () => `You are an expert web developer creating a complete, single-file HTML application.
+CRITICAL INSTRUCTIONS:
+1. ALL code (HTML, CSS, JS) MUST be in one .html file.
+2. You MUST use Tailwind CSS via CDN: <script src="https://cdn.tailwindcss.com"></script>.
+3. The code must be fully functional and runnable in a browser.
+4. Your entire response MUST BE ONLY the raw HTML code. Do not include any explanations, comments, or markdown formatting like \`\`\`html.
+5. Create a visually appealing, modern, responsive UI using the 'Inter' font via Google Fonts CDN.
+6. Implement the user's core functionality requested.`;
+
+const getRefinementSystemPrompt = (originalPrompt: string, currentCode: string, refinementRequest: string) => `You are an expert web developer modifying an existing single-file HTML application.
+The user's original goal was: "${originalPrompt}".
+You will receive the CURRENT HTML code and a new modification request. Your task is to apply the requested modification to the code and return the COMPLETE, new version of the single-file HTML application.
+
+CRITICAL INSTRUCTIONS:
+1. Your response MUST be ONLY the full, raw HTML code for the updated application. Do not include any explanations, comments, or markdown formatting like \`\`\`html.
+2. Ensure the final code is still a complete, runnable, single file using Tailwind CSS from the CDN.
+
+HERE IS THE CURRENT CODE:
+${currentCode}
+
+**Modification Request:** "${refinementRequest}"`;
+
+
+const callApi = async (prompt: string): Promise<string> => {
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                // Use a lower temperature for more predictable code generation
+                temperature: 0.2,
+            },
+        });
+        
+        const candidate = response.candidates?.[0];
+
+        if (!candidate) {
+            throw new Error("The API returned no candidates in the response.");
+        }
+
+        // Check for safety blocks or other non-OK finish reasons.
+        if (candidate.finishReason && candidate.finishReason !== 'STOP') {
+            switch (candidate.finishReason) {
+                case 'SAFETY':
+                    throw new Error("The request was blocked for safety reasons. Please modify your prompt and try again.");
+                case 'RECITATION':
+                     throw new Error("The request was blocked due to potential recitation issues.");
+                case 'MAX_TOKENS':
+                    throw new Error("The response was stopped because it reached the maximum token limit.");
+                default:
+                    throw new Error(`Generation stopped for an unexpected reason: ${candidate.finishReason}`);
+            }
+        }
+        
+        const code = response.text;
+        
+        if (!code) {
+             throw new Error("The API returned an empty response.");
+        }
+        
+        // Clean up potential markdown formatting just in case
+        return code.replace(/^```html\s*|```\s*$/g, '').trim();
+
+    } catch (error) {
+        console.error("Gemini API Error:", error);
+        
+        // Check for specific error messages to provide better user feedback
+        if (error instanceof Error) {
+             const errorMessage = error.message.toLowerCase();
+             if (errorMessage.includes('api key not valid')) {
+                 throw new Error("API Key not valid. Please check your configuration.");
+             }
+             if (errorMessage.includes('quota')) {
+                 throw new Error("You have exceeded your API quota. Please check your account status.");
+             }
+             if (errorMessage.includes('fetch') || errorMessage.includes('network')) {
+                 throw new Error("Network error. Please check your internet connection and try again.");
+             }
+             // Re-throw the original error if it's already specific enough (e.g., from the finishReason check)
+             throw error;
+        }
+
+        throw new Error("An unknown error occurred while contacting the Gemini API.");
+    }
+}
+
+export const generateApp = async (userPrompt: string): Promise<string> => {
+    const systemPrompt = getSystemPrompt();
+    const fullPrompt = `${systemPrompt}\n\n**User's Request:** "${userPrompt}"`;
+    return callApi(fullPrompt);
+};
+
+export const refineApp = async (originalPrompt: string, currentCode: string, refinementRequest: string): Promise<string> => {
+    const fullPrompt = getRefinementSystemPrompt(originalPrompt, currentCode, refinementRequest);
+    return callApi(fullPrompt);
+};

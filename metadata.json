@@ -1,0 +1,5 @@
+{
+  "name": "AI Builder Studio",
+  "description": "An AI-powered web application that allows users to generate and edit single-file web applications using text prompts in a professional-grade editor.",
+  "requestFramePermissions": []
+}
