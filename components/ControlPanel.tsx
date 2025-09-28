@@ -1,14 +1,18 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import type { LoadingState } from '../types';
-import { GenerateIcon, LoadingSpinner, ClearIcon } from './icons';
+import { GenerateIcon, LoadingSpinner, ClearIcon, UploadIcon, GithubIcon } from './icons';
+import { ErrorDisplay } from './ErrorDisplay';
 
 interface ControlPanelProps {
   prompt: string;
   setPrompt: (prompt: string) => void;
   onGenerate: () => void;
   onClear: () => void;
+  onFileUpload: (fileContent: string) => void;
+  onCloneRequest: () => void;
   loadingState: LoadingState;
   error: string | null;
+  onErrorDismiss: () => void;
 }
 
 const examplePrompts = [
@@ -19,12 +23,28 @@ const examplePrompts = [
   'Pomodoro Timer',
 ];
 
-export const ControlPanel: React.FC<ControlPanelProps> = ({ prompt, setPrompt, onGenerate, onClear, loadingState, error }) => {
+export const ControlPanel: React.FC<ControlPanelProps> = ({ prompt, setPrompt, onGenerate, onClear, onFileUpload, onCloneRequest, loadingState, error, onErrorDismiss }) => {
   const isGenerating = loadingState === 'generate';
   const isBusy = loadingState !== 'idle';
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const handleExampleClick = (text: string) => {
     setPrompt(`Create a single-page application for a '${text}'. The application should be visually appealing, modern, and fully functional. Use a dark theme with purple and indigo accents.`);
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const content = e.target?.result as string;
+        onFileUpload(content);
+      };
+      reader.readAsText(file);
+    }
+    if (event.target) {
+      event.target.value = '';
+    }
   };
 
   return (
@@ -60,14 +80,44 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({ prompt, setPrompt, o
       </div>
 
       <div className="p-6 border-t border-gray-200 dark:border-gray-700 space-y-3">
-        <button
-          onClick={onClear}
-          disabled={isBusy}
-          className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <ClearIcon />
-          Clear All
-        </button>
+        {error && (
+            <div className="pb-2">
+                <ErrorDisplay message={error} onDismiss={onErrorDismiss} />
+            </div>
+        )}
+        <div className="grid grid-cols-3 gap-3">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isBusy}
+              className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <UploadIcon />
+              Upload
+            </button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              accept=".html,.htm"
+              className="hidden"
+            />
+            <button
+              onClick={onCloneRequest}
+              disabled={isBusy}
+              className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <GithubIcon className="w-5 h-5 mr-2" />
+              Clone
+            </button>
+            <button
+              onClick={onClear}
+              disabled={isBusy}
+              className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ClearIcon />
+              Clear
+            </button>
+        </div>
         <button
           onClick={onGenerate}
           disabled={isBusy}
@@ -75,7 +125,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({ prompt, setPrompt, o
         >
           {isGenerating ? (
             <>
-              <LoadingSpinner />
+              <LoadingSpinner className="animate-spin -ml-1 mr-3 h-5 w-5" />
               <span>Generating...</span>
             </>
           ) : (
@@ -85,11 +135,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({ prompt, setPrompt, o
             </>
           )}
         </button>
-        {error && (
-          <div className="text-red-600 dark:text-red-400 text-sm pt-2 text-center break-words">
-            {error}
-          </div>
-        )}
       </div>
     </>
   );

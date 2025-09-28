@@ -33,7 +33,7 @@ export const RefinementControls: React.FC<RefinementControlsProps> = ({ refineme
         >
           {isRefining ? (
             <>
-              <LoadingSpinner />
+              <LoadingSpinner className="animate-spin -ml-1 mr-3 h-5 w-5" />
               <span>Refining...</span>
             </>
           ) : (
