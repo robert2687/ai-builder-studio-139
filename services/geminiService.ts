@@ -1,3 +1,5 @@
+
+
 import { GoogleGenAI } from "@google/genai";
 
 if (!process.env.API_KEY) {
@@ -15,6 +17,7 @@ CRITICAL INSTRUCTIONS:
     *   Implement a visually appealing, modern, and responsive UI. It MUST look great on all screen sizes, from mobile to desktop. Use responsive prefixes like 'md:' and 'lg:'.
     *   Default to a professional dark theme with good contrast. Use a palette of dark grays/charcoals and a primary accent color (like indigo or purple) for interactive elements.
     *   Ensure consistent spacing and padding throughout the application for a clean, uncluttered layout.
+    *   **Style all form inputs** (text, password, email, etc.) to be modern and consistent with the dark theme. They should have clear borders (e.g., \`border-gray-600\`), appropriate padding (e.g., \`px-3 py-2\`), a subtle background color (e.g., \`bg-gray-700\`), and a distinct focus state (e.g., \`focus:ring-2 focus:ring-indigo-500 focus:border-transparent\`).
 3.  **Vanilla JavaScript:** The code must be fully functional and runnable in a browser with vanilla JavaScript. Do not use React or any other framework.
 4.  **Code-Only Output:** Your entire response MUST BE ONLY the raw HTML code. Do not include any explanations, comments, or markdown formatting like \`\`\`html.
 5.  **Typography & Icons:**
@@ -22,7 +25,7 @@ CRITICAL INSTRUCTIONS:
     *   For icons, you MUST use inline SVGs within the HTML to maintain the single-file structure.
 6.  **Functionality:** Implement the user's core requested functionality completely.
 7.  **Polished User Experience:**
-    *   Incorporate subtle, purposeful animations and transitions to enhance the UI. For example, add smooth hover effects for buttons and links, gentle fade-in animations for content, and fluid state changes.
+    *   Incorporate subtle, tasteful animations and transitions to enhance the UI. All interactive elements like buttons and links MUST have a smooth hover effect, such as a slight scale-up (\`hover:scale-105\`), a gentle lift (\`hover:-translate-y-1\`), or a background color shift. Use utilities like \`transition-transform\` and \`duration-300\` to ensure animations are fluid.
     *   All interactive elements (buttons, inputs) MUST have clear hover, focus, and active states.
 8.  **Accessibility (A11y):**
     *   Use semantic HTML5 tags (e.g., <main>, <header>, <section>).

@@ -1,9 +1,6 @@
-
-
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { ActiveTab, Theme, LoadingState } from '../types';
-import { CopyIcon, DownloadIcon, CheckIcon, WelcomeIcon, UndoIcon, RedoIcon, CompareIcon, FullScreenIcon, ExitFullScreenIcon, ExternalLinkIcon, ChevronUpIcon, ChevronDownIcon, ReloadIcon } from './icons';
+import { CopyIcon, DownloadIcon, CheckIcon, WelcomeIcon, UndoIcon, RedoIcon, CompareIcon, FullScreenIcon, ExitFullScreenIcon, ExternalLinkIcon, ChevronUpIcon, ChevronDownIcon, ReloadIcon, FormatIcon } from './icons';
 import { getCodeCompletion } from '../services/geminiService';
 import type * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
 
@@ -120,8 +117,8 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
       suggestOnTriggerCharacters: true,
       folding: true,
       showFoldingControls: 'always',
-      // FIX: Corrected a TypeScript type error for the Monaco editor's `lightbulb.enabled` option by changing its value from 'on' to `true`. The project's type definitions likely expect a boolean.
-      lightbulb: { enabled: true },
+      // Fix: The `lightbulb.enabled` option for the Monaco editor requires the string 'on', not a boolean.
+      lightbulb: { enabled: 'on' },
       "semanticHighlighting.enabled": true,
       // Enable breadcrumbs for symbol navigation/outlining
       breadcrumb: {
@@ -217,7 +214,7 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
                     }
                 } else if (lastStyleTag > lastScriptTag) {
                     const nextStyleCloseTag = fullCode.indexOf('</style>', offset);
-                    if (lastStyleTag !== -1 && (nextStyleCloseTag === -1 || offset < nextStyleCloseTag)) {
+                    if (lastStyleTag !== -1 && (nextStyleCloseTag ===-1 || offset < nextStyleCloseTag)) {
                         languageContext = 'CSS within a <style> tag';
                     }
                 }
@@ -264,8 +261,6 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
             saveStatusTimer.current = window.setTimeout(() => setSaveStatus('idle'), 2000);
         });
 
-        editor.onDidBlurEditorText(() => editor.getAction('editor.action.formatDocument')?.run());
-
         updateUndoRedoState();
     });
 
@@ -298,8 +293,6 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
             onCodeChange(modifiedEditor.getValue());
             updateUndoRedoState();
         });
-
-        modifiedEditor.onDidBlurEditorText(() => modifiedEditor.getAction('editor.action.formatDocument')?.run());
 
         updateUndoRedoState();
 
@@ -407,6 +400,14 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
     activeEditor?.trigger('toolbar', 'redo', null);
     activeEditor?.focus();
   }, [isDiffVisible]);
+  
+  const handleFormatCode = useCallback(() => {
+    const activeEditor = isDiffVisible
+      ? diffEditorInstanceRef.current?.getModifiedEditor()
+      : editorInstanceRef.current;
+    activeEditor?.getAction('editor.action.formatDocument')?.run();
+    activeEditor?.focus();
+  }, [isDiffVisible]);
 
   const isGenerating = loadingState === 'generate';
   const isOutputVisible = !isGenerating && code;
@@ -435,6 +436,9 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
                   </button>
                   <button onClick={handleRedo} title="Redo (Ctrl+Y)" disabled={!canRedo} className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                     <RedoIcon />
+                  </button>
+                  <button onClick={handleFormatCode} title="Format Code" className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                    <FormatIcon />
                   </button>
                   <div className="w-px h-5 bg-gray-300 dark:bg-gray-600" />
                   {previousCode && (
