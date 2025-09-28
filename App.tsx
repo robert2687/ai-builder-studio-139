@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { OutputPanel } from './components/OutputPanel';
 import { RefinementControls } from './components/RefinementControls';
-import type { ActiveTab, LoadingState, Theme } from './types';
+import type { ActiveTab, LoadingState, Theme, CodeSourceInfo } from './types';
 import { generateApp, refineApp } from './services/geminiService';
 import { MoonIcon, SunIcon } from './components/icons';
 import { ConfirmationDialog } from './components/ConfirmationDialog';
@@ -20,6 +20,8 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>('dark');
   const [isClearConfirmVisible, setIsClearConfirmVisible] = useState(false);
   const [isCloneDialogVisible, setIsCloneDialogVisible] = useState(false);
+  const [codeSourceInfo, setCodeSourceInfo] = useState<CodeSourceInfo | null>(null);
+
 
   // Theme persistence effect
   useEffect(() => {
@@ -47,22 +49,39 @@ export default function App() {
     const savedCode = localStorage.getItem('ai-builder-studio-code');
     const savedInitialPrompt = localStorage.getItem('ai-builder-studio-initial-prompt');
     const savedPreviousCode = localStorage.getItem('ai-builder-studio-previous-code');
+    const savedSourceInfo = localStorage.getItem('ai-builder-studio-source-info');
+
     if (savedCode) {
       setGeneratedCode(savedCode);
     }
     if (savedInitialPrompt) {
       setInitialPrompt(savedInitialPrompt);
-      setPrompt(savedInitialPrompt);
+      // Only set the prompt if there's no code, allowing the source info to be the primary display
+      if (!savedCode) {
+        setPrompt(savedInitialPrompt);
+      }
     }
     if (savedPreviousCode) {
       setPreviousCode(savedPreviousCode);
+    }
+    if (savedSourceInfo) {
+      try {
+        setCodeSourceInfo(JSON.parse(savedSourceInfo));
+      } catch(e) {
+        console.error("Failed to parse source info from localStorage", e);
+        localStorage.removeItem('ai-builder-studio-source-info');
+      }
     }
   }, []);
   
   // Debounced save to localStorage
   useEffect(() => {
     const handler = setTimeout(() => {
-      localStorage.setItem('ai-builder-studio-code', generatedCode);
+      if (generatedCode) {
+        localStorage.setItem('ai-builder-studio-code', generatedCode);
+      } else {
+        localStorage.removeItem('ai-builder-studio-code');
+      }
     }, 500);
     return () => clearTimeout(handler);
   }, [generatedCode]);
@@ -75,6 +94,14 @@ export default function App() {
     }
   }, [previousCode]);
 
+  useEffect(() => {
+    if (codeSourceInfo) {
+        localStorage.setItem('ai-builder-studio-source-info', JSON.stringify(codeSourceInfo));
+    } else {
+        localStorage.removeItem('ai-builder-studio-source-info');
+    }
+  }, [codeSourceInfo]);
+
 
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim()) {
@@ -82,7 +109,7 @@ export default function App() {
       return;
     }
 
-    setPreviousCode(generatedCode); // Capture current code before overwriting
+    setPreviousCode(generatedCode);
     setLoadingState('generate');
     setError(null);
     setInitialPrompt(prompt);
@@ -91,11 +118,12 @@ export default function App() {
     try {
       const code = await generateApp(prompt);
       setGeneratedCode(code);
+      setCodeSourceInfo({ type: 'prompt', name: prompt });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
       setError(`Generation failed: ${errorMessage}`);
       setInitialPrompt(null);
-      setPreviousCode(null); // Revert on failure
+      setPreviousCode(null);
       localStorage.removeItem('ai-builder-studio-initial-prompt');
     } finally {
       setLoadingState('idle');
@@ -108,7 +136,7 @@ export default function App() {
       return;
     }
     
-    setPreviousCode(generatedCode); // Capture current code before overwriting
+    setPreviousCode(generatedCode);
     setLoadingState('refine');
     setError(null);
 
@@ -119,7 +147,7 @@ export default function App() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
       setError(`Refinement failed: ${errorMessage}`);
-      setPreviousCode(null); // Revert on failure
+      setPreviousCode(null);
     } finally {
       setLoadingState('idle');
     }
@@ -133,9 +161,11 @@ export default function App() {
     setInitialPrompt(null);
     setError(null);
     setActiveTab('preview');
+    setCodeSourceInfo(null);
     localStorage.removeItem('ai-builder-studio-code');
     localStorage.removeItem('ai-builder-studio-initial-prompt');
     localStorage.removeItem('ai-builder-studio-previous-code');
+    localStorage.removeItem('ai-builder-studio-source-info');
     setIsClearConfirmVisible(false);
   }, []);
 
@@ -151,7 +181,7 @@ export default function App() {
     setError(null);
   }, []);
 
-  const handleFileUpload = useCallback((fileContent: string) => {
+  const handleFileUpload = useCallback((fileContent: string, fileName: string) => {
     const processUploadedHtml = (html: string): string => {
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
@@ -194,12 +224,15 @@ export default function App() {
     
     const newInitialPrompt = "The following code was imported by the user.";
     setInitialPrompt(newInitialPrompt);
+    setCodeSourceInfo({ type: 'file', name: fileName });
     
     localStorage.setItem('ai-builder-studio-initial-prompt', newInitialPrompt);
   }, []);
 
-  const handleClone = useCallback((fileContent: string) => {
-    handleFileUpload(fileContent);
+  const handleClone = useCallback((fileContent: string, repoUrl: string) => {
+    handleFileUpload(fileContent, repoUrl.replace(/https?:\/\//, ''));
+    // Overwrite the source info to be of type 'github'
+    setCodeSourceInfo({ type: 'github', name: repoUrl.replace(/https?:\/\/github.com\//, '') });
     setIsCloneDialogVisible(false);
   }, [handleFileUpload]);
 
@@ -232,6 +265,7 @@ export default function App() {
             loadingState={loadingState}
             error={error}
             onErrorDismiss={handleErrorDismiss}
+            codeSourceInfo={codeSourceInfo}
           />
         </div>
         

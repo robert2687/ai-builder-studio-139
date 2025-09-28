@@ -5,7 +5,7 @@ import { fetchRepoIndexHtml } from '../services/githubService';
 interface GithubCloneDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onClone: (htmlContent: string) => void;
+  onClone: (htmlContent: string, repoUrl: string) => void;
 }
 
 export const GithubCloneDialog: React.FC<GithubCloneDialogProps> = ({ isOpen, onClose, onClone }) => {
@@ -44,7 +44,7 @@ export const GithubCloneDialog: React.FC<GithubCloneDialogProps> = ({ isOpen, on
     setError(null);
     try {
       const htmlContent = await fetchRepoIndexHtml(repoUrl);
-      onClone(htmlContent);
+      onClone(htmlContent, repoUrl);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
       setError(errorMessage);
