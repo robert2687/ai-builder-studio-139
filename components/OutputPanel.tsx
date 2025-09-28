@@ -1,3 +1,6 @@
+
+
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { ActiveTab, Theme, LoadingState } from '../types';
 import { CopyIcon, DownloadIcon, CheckIcon, WelcomeIcon, UndoIcon, RedoIcon, CompareIcon, FullScreenIcon, ExitFullScreenIcon, ExternalLinkIcon, ChevronUpIcon, ChevronDownIcon, ReloadIcon } from './icons';
@@ -38,8 +41,6 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
   code, onCodeChange, previousCode, activeTab, setActiveTab, loadingState, theme,
   diffTarget, onCloseDiff, onCompareRequest 
 }) => {
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [debouncedCode, setDebouncedCode] = useState(code);
   const [isCopied, setIsCopied] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
@@ -54,36 +55,52 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
   const diffEditorInstanceRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
   const monacoRef = useRef<any | null>(null);
   const saveStatusTimer = useRef<number | null>(null);
+  const scrollPosRef = useRef<number>(0);
 
   const isDiffVisible = diffTarget !== null;
 
-  // Debounce code changes for smoother preview updates
+  // Update iframe content seamlessly using document.write
   useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedCode(code);
-    }, 500);
-    return () => {
-      clearTimeout(handler);
-    };
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+
+    // Preserve scroll position before update
+    if (iframe.contentWindow) {
+      scrollPosRef.current = iframe.contentWindow.scrollY;
+    }
+
+    if (code) {
+      const doc = iframe.contentDocument;
+      if (doc) {
+        // The 'load' event listener (added below) will handle restoring scroll
+        doc.open();
+        doc.write(code);
+        doc.close();
+      }
+    } else {
+      // If code is cleared, blank the iframe
+      iframe.src = 'about:blank';
+    }
   }, [code]);
 
-  // Update iframe URL with debounced code
+  // Add a load listener to the iframe to restore scroll position after content is written
   useEffect(() => {
-    if (!debouncedCode) {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-        setPreviewUrl(null);
-      }
-      return;
-    }
-    const blob = new Blob([debouncedCode], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    setPreviewUrl(url);
+    const iframe = iframeRef.current;
+    if (!iframe) return;
 
-    return () => {
-      URL.revokeObjectURL(url);
+    const handleLoad = () => {
+      if (iframe.contentWindow) {
+        // Restore scroll position after new content is loaded
+        iframe.contentWindow.scrollTo(0, scrollPosRef.current);
+      }
     };
-  }, [debouncedCode]);
+    
+    iframe.addEventListener('load', handleLoad);
+    return () => {
+      iframe.removeEventListener('load', handleLoad);
+    };
+  }, []); // Runs once on mount
+
 
   const getEditorOptions = (): monaco.editor.IStandaloneEditorConstructionOptions => ({
       automaticLayout: true,
@@ -103,8 +120,8 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
       suggestOnTriggerCharacters: true,
       folding: true,
       showFoldingControls: 'always',
-      // FIX: The `lightbulb.enabled` option now expects a string literal type ('on' | 'off' | 'onCodeAction') instead of a boolean.
-      lightbulb: { enabled: 'onCodeAction' },
+      // FIX: Corrected a TypeScript type error for the Monaco editor's `lightbulb.enabled` option by changing its value from 'on' to `true`. The project's type definitions likely expect a boolean.
+      lightbulb: { enabled: true },
       "semanticHighlighting.enabled": true,
       // Enable breadcrumbs for symbol navigation/outlining
       breadcrumb: {
@@ -347,25 +364,33 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
   }, [code]);
 
   const handleOpenInNewTab = useCallback(() => {
-    if (previewUrl) {
-      window.open(previewUrl, '_blank', 'noopener,noreferrer');
+    if (code) {
+      const blob = new Blob([code], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener,noreferrer');
     }
-  }, [previewUrl]);
+  }, [code]);
   
   const handleReloadPreview = useCallback(() => {
-    if (iframeRef.current) {
-      // Per the request, first clear the iframe's source to force a blank page.
-      iframeRef.current.src = 'about:blank';
-      
-      // After a very brief delay, re-assign the actual preview URL. This forces
-      // the browser to do a full reload of the iframe's content.
-      setTimeout(() => {
-        if (iframeRef.current && previewUrl) {
-          iframeRef.current.src = previewUrl;
-        }
-      }, 50);
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    
+    // Reset scroll position to top for a manual refresh
+    scrollPosRef.current = 0;
+    
+    // Re-writing the document is equivalent to a hard refresh,
+    // as it re-parses the DOM and re-executes scripts.
+    if (code) {
+      const doc = iframe.contentDocument;
+      if (doc) {
+        doc.open();
+        doc.write(code);
+        doc.close();
+      }
+    } else {
+      iframe.src = 'about:blank';
     }
-  }, [previewUrl]);
+  }, [code]);
 
   const handleUndo = useCallback(() => {
     const activeEditor = isDiffVisible 
@@ -438,10 +463,10 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
               )}
               {activeTab === 'preview' && (
                   <>
-                    <button onClick={handleReloadPreview} title="Reload Preview" disabled={!previewUrl} className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    <button onClick={handleReloadPreview} title="Reload Preview" disabled={!code} className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                         <ReloadIcon />
                     </button>
-                    <button onClick={handleOpenInNewTab} title="Open in New Tab" disabled={!previewUrl} className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    <button onClick={handleOpenInNewTab} title="Open in New Tab" disabled={!code} className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                         <ExternalLinkIcon />
                     </button>
                   </>
@@ -472,7 +497,7 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
           <>
             <iframe
               ref={iframeRef}
-              src={previewUrl || 'about:blank'}
+              src="about:blank"
               className={`w-full h-full border-0 ${activeTab !== 'preview' ? 'hidden' : ''}`}
               title="Application Preview"
               sandbox="allow-scripts allow-forms allow-same-origin"

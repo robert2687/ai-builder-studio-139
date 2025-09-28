@@ -383,7 +383,7 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen text-gray-800 dark:text-gray-200 antialiased transition-colors duration-300">
-      <header className="bg-gray-100/80 dark:bg-gray-800/50 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 p-4 shadow-lg z-10 shrink-0 flex items-center justify-between">
+      <header className="bg-gray-100/80 dark:bg-gray-800/50 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 p-4 shadow-lg z-10 shrink-0 flex items-center justify-between animate-fade-in">
         <div className="flex-1"></div>
         <div className="text-center flex-1">
           <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-purple-600 dark:from-indigo-400 dark:to-purple-500">
@@ -399,7 +399,8 @@ export default function App() {
       </header>
 
       <main
-        className="flex-grow p-4 md:p-6 overflow-hidden"
+        className="flex-grow p-4 md:p-6 overflow-hidden animate-fade-in-up"
+        style={{ animationDelay: '200ms', opacity: 0 }}
         onMouseMove={isResizing ? (e) => handleMouseMove(e.nativeEvent) : undefined}
         onMouseUp={isResizing ? handleMouseUp : undefined}
         onMouseLeave={isResizing ? handleMouseUp : undefined}

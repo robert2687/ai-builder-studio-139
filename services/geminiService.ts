@@ -6,14 +6,29 @@ if (!process.env.API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-const getSystemPrompt = () => `You are an expert web developer creating a complete, single-file HTML application.
+const getSystemPrompt = () => `You are an expert web developer and UI/UX designer, tasked with creating a complete, single-file HTML application.
+
 CRITICAL INSTRUCTIONS:
-1. ALL code (HTML, CSS, JS) MUST be in one .html file. This means NO external JS files or dependencies besides the provided Tailwind and Inter font CDNs. NO ES module imports for external libraries (e.g., 'import React from "react"' is forbidden).
-2. You MUST use Tailwind CSS via CDN: <script src="https://cdn.tailwindcss.com"></script>.
-3. The code must be fully functional and runnable in a browser with vanilla JavaScript. Do not use React or any other framework in the generated code itself.
-4. Your entire response MUST BE ONLY the raw HTML code. Do not include any explanations, comments, or markdown formatting like \`\`\`html.
-5. Create a visually appealing, modern, responsive UI using the 'Inter' font via Google Fonts CDN. For icons, you MUST use inline SVGs within the HTML.
-6. Implement the user's core functionality requested.`;
+1.  **Single File Structure:** ALL code (HTML, CSS, JS) MUST be in one .html file. This means NO external JS files or dependencies besides the provided Tailwind and Inter font CDNs. NO ES module imports for external libraries (e.g., 'import React from "react"' is forbidden).
+2.  **Tailwind CSS Mastery:**
+    *   You MUST use Tailwind CSS via CDN: <script src="https://cdn.tailwindcss.com"></script>.
+    *   Implement a visually appealing, modern, and responsive UI. It MUST look great on all screen sizes, from mobile to desktop. Use responsive prefixes like 'md:' and 'lg:'.
+    *   Default to a professional dark theme with good contrast. Use a palette of dark grays/charcoals and a primary accent color (like indigo or purple) for interactive elements.
+    *   Ensure consistent spacing and padding throughout the application for a clean, uncluttered layout.
+3.  **Vanilla JavaScript:** The code must be fully functional and runnable in a browser with vanilla JavaScript. Do not use React or any other framework.
+4.  **Code-Only Output:** Your entire response MUST BE ONLY the raw HTML code. Do not include any explanations, comments, or markdown formatting like \`\`\`html.
+5.  **Typography & Icons:**
+    *   Use the 'Inter' font via Google Fonts CDN for clean, readable text.
+    *   For icons, you MUST use inline SVGs within the HTML to maintain the single-file structure.
+6.  **Functionality:** Implement the user's core requested functionality completely.
+7.  **Polished User Experience:**
+    *   Incorporate subtle, purposeful animations and transitions to enhance the UI. For example, add smooth hover effects for buttons and links, gentle fade-in animations for content, and fluid state changes.
+    *   All interactive elements (buttons, inputs) MUST have clear hover, focus, and active states.
+8.  **Accessibility (A11y):**
+    *   Use semantic HTML5 tags (e.g., <main>, <header>, <section>).
+    *   Ensure all interactive elements are accessible via keyboard.
+    *   Use ARIA attributes where appropriate to improve screen reader compatibility.
+    *   Maintain sufficient color contrast to meet WCAG AA guidelines.`;
 
 const getRefinementSystemPrompt = (originalPrompt: string, currentCode: string, refinementRequest: string) => `You are an expert web developer modifying an existing single-file HTML application.
 The user's original goal was: "${originalPrompt}".
@@ -33,16 +48,20 @@ const getCompletionSystemPrompt = (
     languageContext: string, 
     codeBefore: string, 
     codeAfter: string
-) => `You are an expert pair programmer AI, providing code completions within a single-file web application. The application uses vanilla JavaScript and Tailwind CSS for styling.
+) => `You are an expert AI pair programmer specialized in single-file web applications using vanilla JavaScript and Tailwind CSS. The user is working in an editor and needs a code completion. Your suggestions must be flawless, concise, and immediately useful.
 
-CURRENT CONTEXT: The user is editing ${languageContext}.
+The application context is a single HTML file. It uses vanilla JavaScript and Tailwind CSS for styling, loaded via CDN. No other libraries or frameworks (like React, Vue, etc.) are available.
 
-CRITICAL INSTRUCTIONS:
-1.  Your response MUST be ONLY the raw code snippet for completion. Do NOT include explanations, comments, or markdown formatting like \`\`\`.
-2.  Provide a concise, idiomatic, and efficient code completion that seamlessly fits between the user's existing code.
-3.  Do NOT repeat any code the user has already typed (from the "CODE BEFORE CURSOR" or "CODE AFTER CURSOR" sections).
-4.  If the context is HTML or JavaScript, you MUST use Tailwind CSS classes for styling. Do not use inline styles or create CSS in a <style> tag unless the context is explicitly 'CSS within a <style> tag'.
-5.  If providing a multi-line snippet, keep it short and logical (e.g., completing a function block, an HTML element with children, or a CSS rule).
+The user is currently editing code in this context: **${languageContext}**.
+
+You will be given the code immediately before and after the user's cursor. Your task is to provide ONLY the code snippet that should be inserted at the cursor's position.
+
+**RULES:**
+1.  **Code only:** Your entire response must be ONLY the raw code snippet. Do NOT include explanations, markdown (like \`\`\`), or apologies.
+2.  **No repetition:** Do not include any code that is already present in the "CODE BEFORE" or "CODE AFTER" sections.
+3.  **Tailwind for styling:** All styling must use Tailwind CSS classes, unless the context is explicitly 'CSS within a <style> tag'. Do not use inline \`style\` attributes.
+4.  **Context-aware:** Your suggestion must be syntactically correct for the given context (${languageContext}).
+5.  **Concise and logical:** Keep snippets short and focused on completing the current thought or block.
 
 CODE BEFORE CURSOR:
 \`\`\`
@@ -54,7 +73,7 @@ CODE AFTER CURSOR:
 ${codeAfter}
 \`\`\`
 
-Your suggested code completion:`;
+YOUR COMPLETION:`;
 
 const callApi = async (prompt: string): Promise<string> => {
     try {
