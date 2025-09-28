@@ -103,8 +103,8 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
       suggestOnTriggerCharacters: true,
       folding: true,
       showFoldingControls: 'always',
-      // FIX: The `lightbulb.enabled` option now expects a string literal type ('on' | 'off' | 'onCode') instead of a boolean.
-      lightbulb: { enabled: 'on' },
+      // FIX: The `lightbulb.enabled` option now expects a string literal type ('on' | 'off' | 'onCodeAction') instead of a boolean.
+      lightbulb: { enabled: 'onCodeAction' },
       "semanticHighlighting.enabled": true,
       // Enable breadcrumbs for symbol navigation/outlining
       breadcrumb: {
