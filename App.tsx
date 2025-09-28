@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { OutputPanel } from './components/OutputPanel';
 import { RefinementControls } from './components/RefinementControls';
@@ -19,6 +19,18 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [editorInstance, setEditorInstance] = useState<monaco.editor.IStandaloneCodeEditor | null>(null);
 
+  useEffect(() => {
+    const savedCode = localStorage.getItem('ai-builder-studio-code');
+    const savedInitialPrompt = localStorage.getItem('ai-builder-studio-initial-prompt');
+    if (savedCode) {
+      setGeneratedCode(savedCode);
+    }
+    if (savedInitialPrompt) {
+      setInitialPrompt(savedInitialPrompt);
+      setPrompt(savedInitialPrompt);
+    }
+  }, []);
+
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim()) {
       setError('Please enter a description for your application.');
@@ -29,6 +41,7 @@ export default function App() {
     setError(null);
     setGeneratedCode('');
     setInitialPrompt(prompt);
+    localStorage.setItem('ai-builder-studio-initial-prompt', prompt);
 
     try {
       const code = await generateApp(prompt);
@@ -37,6 +50,7 @@ export default function App() {
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
       setError(`Generation failed: ${errorMessage}`);
       setInitialPrompt(null);
+      localStorage.removeItem('ai-builder-studio-initial-prompt');
     } finally {
       setLoadingState('idle');
     }
@@ -76,6 +90,8 @@ export default function App() {
     setInitialPrompt(null);
     setError(null);
     setActiveTab('preview');
+    localStorage.removeItem('ai-builder-studio-code');
+    localStorage.removeItem('ai-builder-studio-initial-prompt');
   }, []);
 
   return (

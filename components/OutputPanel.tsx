@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { ActiveTab } from '../types';
 import { CopyIcon, DownloadIcon, CheckIcon, WelcomeIcon, UndoIcon, RedoIcon } from './icons';
@@ -34,7 +35,11 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ code, activeTab, setAc
   const [isCopied, setIsCopied] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle');
   const editorRef = useRef<HTMLDivElement | null>(null);
+  const debounceTimer = useRef<number | null>(null);
+  const saveStatusTimer = useRef<number | null>(null);
+
 
   useEffect(() => {
     if (!code) {
@@ -99,10 +104,29 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ code, activeTab, setAc
             setCanUndo(currentModel.canUndo());
             setCanRedo(currentModel.canRedo());
         }
+
+        // Auto-save logic
+        if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
+        if (saveStatusTimer.current) window.clearTimeout(saveStatusTimer.current);
+
+        setSaveStatus(s => s === 'saved' ? 'idle' : s); // Hide "Saved" message on new typing
+
+        debounceTimer.current = window.setTimeout(() => {
+            if (editorInstance) {
+                const currentCode = editorInstance.getValue();
+                localStorage.setItem('ai-builder-studio-code', currentCode);
+                setSaveStatus('saved');
+                saveStatusTimer.current = window.setTimeout(() => {
+                    setSaveStatus('idle');
+                }, 2000);
+            }
+        }, 1000);
     });
 
     return () => {
         disposable.dispose();
+        if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
+        if (saveStatusTimer.current) window.clearTimeout(saveStatusTimer.current);
     };
   }, [editorInstance]);
 
@@ -151,6 +175,12 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ code, activeTab, setAc
           <div className="flex items-center gap-3">
             {activeTab === 'code' && (
               <>
+                {saveStatus === 'saved' && (
+                  <div className="flex items-center gap-1 text-sm text-green-400">
+                    <CheckIcon />
+                    <span>Saved</span>
+                  </div>
+                )}
                 <button onClick={handleUndo} title="Undo (Ctrl+Z)" disabled={!canUndo} className="p-2 rounded-md hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                   <UndoIcon />
                 </button>
