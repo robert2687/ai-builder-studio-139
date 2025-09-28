@@ -1,12 +1,14 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { OutputPanel } from './components/OutputPanel';
-import { RefinementControls } from './components/RefinementControls';
-import type { ActiveTab, LoadingState, Theme, CodeSourceInfo } from './types';
+import type { ActiveTab, LoadingState, Theme, CodeSourceInfo, SavedProject } from './types';
 import { generateApp, refineApp } from './services/geminiService';
 import { MoonIcon, SunIcon } from './components/icons';
 import { ConfirmationDialog } from './components/ConfirmationDialog';
 import { GithubCloneDialog } from './components/GithubCloneDialog';
+import { SaveDialog } from './components/SaveDialog';
+import { LoadDialog } from './components/LoadDialog';
+import * as storage from './services/storageService';
 
 export default function App() {
   const [prompt, setPrompt] = useState<string>('');
@@ -21,7 +23,17 @@ export default function App() {
   const [isClearConfirmVisible, setIsClearConfirmVisible] = useState(false);
   const [isCloneDialogVisible, setIsCloneDialogVisible] = useState(false);
   const [codeSourceInfo, setCodeSourceInfo] = useState<CodeSourceInfo | null>(null);
+  const [isSaveDialogVisible, setIsSaveDialogVisible] = useState(false);
+  const [isLoadDialogVisible, setIsLoadDialogVisible] = useState(false);
+  const [savedProjects, setSavedProjects] = useState<Record<string, SavedProject>>({});
 
+  // Resizable panel state
+  const mainContainerRef = useRef<HTMLDivElement>(null);
+  const [isResizing, setIsResizing] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(() => {
+    const savedWidth = typeof window !== 'undefined' ? localStorage.getItem('ai-builder-panel-width') : null;
+    return savedWidth ? Number(savedWidth) : 50;
+  });
 
   // Theme persistence effect
   useEffect(() => {
@@ -29,6 +41,11 @@ export default function App() {
     const userPrefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     const initialTheme = savedTheme || (userPrefersDark ? 'dark' : 'light');
     setTheme(initialTheme);
+  }, []);
+  
+  // Load saved projects on initial mount
+  useEffect(() => {
+    setSavedProjects(storage.getProjects());
   }, []);
 
   useEffect(() => {
@@ -56,7 +73,6 @@ export default function App() {
     }
     if (savedInitialPrompt) {
       setInitialPrompt(savedInitialPrompt);
-      // Only set the prompt if there's no code, allowing the source info to be the primary display
       if (!savedCode) {
         setPrompt(savedInitialPrompt);
       }
@@ -74,7 +90,6 @@ export default function App() {
     }
   }, []);
   
-  // Debounced save to localStorage
   useEffect(() => {
     const handler = setTimeout(() => {
       if (generatedCode) {
@@ -102,19 +117,62 @@ export default function App() {
     }
   }, [codeSourceInfo]);
 
+  // Resizable panel effects
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('ai-builder-panel-width', String(panelWidth));
+    }
+  }, [panelWidth]);
+
+  useEffect(() => {
+    if (isResizing) {
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    } else {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+    return () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing]);
+  
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsResizing(true);
+  }, []);
+
+  const handleMouseUp = useCallback(() => {
+    setIsResizing(false);
+  }, []);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isResizing || !mainContainerRef.current) return;
+
+    const containerRect = mainContainerRef.current.getBoundingClientRect();
+    let newWidthPercent = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+
+    const minPercent = 20;
+    const maxPercent = 80;
+
+    if (newWidthPercent < minPercent) newWidthPercent = minPercent;
+    if (newWidthPercent > maxPercent) newWidthPercent = maxPercent;
+
+    setPanelWidth(newWidthPercent);
+  }, [isResizing]);
 
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim()) {
       setError('Please enter a description for your application.');
       return;
     }
-
     setPreviousCode(generatedCode);
     setLoadingState('generate');
     setError(null);
     setInitialPrompt(prompt);
     localStorage.setItem('ai-builder-studio-initial-prompt', prompt);
-
     try {
       const code = await generateApp(prompt);
       setGeneratedCode(code);
@@ -135,11 +193,9 @@ export default function App() {
       setError('Please enter a refinement request.');
       return;
     }
-    
     setPreviousCode(generatedCode);
     setLoadingState('refine');
     setError(null);
-
     try {
       const code = await refineApp(initialPrompt || '', generatedCode, refinementPrompt);
       setGeneratedCode(code);
@@ -185,56 +241,91 @@ export default function App() {
     const processUploadedHtml = (html: string): string => {
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
-
       let head = doc.head;
       if (!head) {
         head = doc.createElement('head');
         doc.documentElement.prepend(head);
       }
-      
       if (!head.querySelector('script[src="https://cdn.tailwindcss.com"]')) {
         const tailwindScript = doc.createElement('script');
         tailwindScript.src = 'https://cdn.tailwindcss.com';
         head.appendChild(tailwindScript);
       }
-
       if (!head.querySelector('link[href*="family=Inter"]')) {
         const fontLink = doc.createElement('link');
         fontLink.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap';
         fontLink.rel = 'stylesheet';
         head.appendChild(fontLink);
       }
-      
       const style = doc.createElement('style');
       style.textContent = `body { font-family: 'Inter', sans-serif; }`;
       head.appendChild(style);
-
       const doctype = doc.doctype ? `<!DOCTYPE ${doc.doctype.name}>` : '<!DOCTYPE html>';
       return `${doctype}\n${doc.documentElement.outerHTML}`;
     };
-
     setPrompt('');
     setRefinementPrompt('');
     setError(null);
     setActiveTab('preview');
     setPreviousCode(null);
-    
     const processedCode = processUploadedHtml(fileContent);
     setGeneratedCode(processedCode);
-    
     const newInitialPrompt = "The following code was imported by the user.";
     setInitialPrompt(newInitialPrompt);
     setCodeSourceInfo({ type: 'file', name: fileName });
-    
     localStorage.setItem('ai-builder-studio-initial-prompt', newInitialPrompt);
   }, []);
 
   const handleClone = useCallback((fileContent: string, repoUrl: string) => {
     handleFileUpload(fileContent, repoUrl.replace(/https?:\/\//, ''));
-    // Overwrite the source info to be of type 'github'
     setCodeSourceInfo({ type: 'github', name: repoUrl.replace(/https?:\/\/github.com\//, '') });
     setIsCloneDialogVisible(false);
   }, [handleFileUpload]);
+
+  const requestSave = useCallback(() => {
+    setIsSaveDialogVisible(true);
+  }, []);
+
+  const handleSave = useCallback(async (projectName: string) => {
+    try {
+      storage.saveProject(projectName, {
+        generatedCode,
+        initialPrompt,
+        codeSourceInfo,
+      });
+      setSavedProjects(storage.getProjects()); // Refresh project list
+    } catch (e) {
+      setError((e as Error).message);
+      // Re-throw to keep the dialog open and show the error
+      throw e;
+    }
+  }, [generatedCode, initialPrompt, codeSourceInfo]);
+
+  const requestLoad = useCallback(() => {
+    setSavedProjects(storage.getProjects()); // ensure fresh list before opening
+    setIsLoadDialogVisible(true);
+  }, []);
+
+  const handleLoad = useCallback((projectName: string) => {
+    const project = savedProjects[projectName];
+    if (project) {
+        setGeneratedCode(project.generatedCode);
+        setInitialPrompt(project.initialPrompt);
+        setCodeSourceInfo({ type: 'saved', name: projectName });
+        setPreviousCode(null);
+        setRefinementPrompt('');
+        setError(null);
+    }
+  }, [savedProjects]);
+
+  const handleDelete = useCallback((projectName: string) => {
+    try {
+      storage.deleteProject(projectName);
+      setSavedProjects(storage.getProjects()); // Refresh project list
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }, []);
 
   return (
     <div className="flex flex-col h-screen text-gray-800 dark:text-gray-200 antialiased transition-colors duration-300">
@@ -253,40 +344,66 @@ export default function App() {
         </div>
       </header>
 
-      <main className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 overflow-hidden">
-        <div className="flex flex-col bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden ring-1 ring-gray-200 dark:ring-gray-700">
-          <ControlPanel
-            prompt={prompt}
-            setPrompt={setPrompt}
-            onGenerate={handleGenerate}
-            onClear={requestClear}
-            onFileUpload={handleFileUpload}
-            onCloneRequest={() => setIsCloneDialogVisible(true)}
-            loadingState={loadingState}
-            error={error}
-            onErrorDismiss={handleErrorDismiss}
-            codeSourceInfo={codeSourceInfo}
-          />
-        </div>
-        
-        <div className="flex flex-col bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden ring-1 ring-gray-200 dark:ring-gray-700">
-          <OutputPanel
-            code={generatedCode}
-            onCodeChange={setGeneratedCode}
-            previousCode={previousCode}
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            loadingState={loadingState}
-            theme={theme}
-          />
-          {generatedCode && (
-            <RefinementControls
-              refinementPrompt={refinementPrompt}
-              setRefinementPrompt={setRefinementPrompt}
-              onRefine={handleRefine}
-              loadingState={loadingState}
-            />
-          )}
+      <main
+        className="flex-grow p-6 overflow-hidden"
+        onMouseMove={isResizing ? handleMouseMove : undefined}
+        onMouseUp={isResizing ? handleMouseUp : undefined}
+        onMouseLeave={isResizing ? handleMouseUp : undefined}
+      >
+        <div ref={mainContainerRef} className="w-full h-full flex flex-col lg:flex-row items-stretch">
+            {/* Control Panel Wrapper */}
+            <div
+              className="flex-shrink-0 lg:h-full mb-6 lg:mb-0"
+              style={{ flexBasis: `calc(${panelWidth}% - 0.75rem)` }}
+            >
+              <div className="flex flex-col w-full h-full bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden ring-1 ring-gray-200 dark:ring-gray-700">
+                 <ControlPanel
+                    prompt={prompt}
+                    setPrompt={setPrompt}
+                    onGenerate={handleGenerate}
+                    onClear={requestClear}
+                    onFileUpload={handleFileUpload}
+                    onCloneRequest={() => setIsCloneDialogVisible(true)}
+                    onSaveRequest={requestSave}
+                    onLoadRequest={requestLoad}
+                    isCodePresent={!!generatedCode}
+                    loadingState={loadingState}
+                    error={error}
+                    onErrorDismiss={handleErrorDismiss}
+                    codeSourceInfo={codeSourceInfo}
+                    refinementPrompt={refinementPrompt}
+                    setRefinementPrompt={setRefinementPrompt}
+                    onRefine={handleRefine}
+                  />
+              </div>
+            </div>
+
+            {/* Resizer */}
+            <div
+              onMouseDown={handleMouseDown}
+              className="hidden lg:flex w-6 flex-shrink-0 cursor-col-resize group items-center justify-center"
+              style={{ touchAction: 'none' }}
+            >
+              <div className="w-1 h-12 bg-gray-300 dark:bg-gray-600 rounded-full group-hover:bg-indigo-500 transition-colors" />
+            </div>
+            
+            {/* Output Panel Wrapper */}
+            <div
+              className="flex-1 lg:h-full"
+              style={{ flexBasis: `calc(${100 - panelWidth}% - 0.75rem)` }}
+            >
+              <div className="flex flex-col w-full h-full bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden ring-1 ring-gray-200 dark:ring-gray-700">
+                <OutputPanel
+                  code={generatedCode}
+                  onCodeChange={setGeneratedCode}
+                  previousCode={previousCode}
+                  activeTab={activeTab}
+                  setActiveTab={setActiveTab}
+                  loadingState={loadingState}
+                  theme={theme}
+                />
+              </div>
+            </div>
         </div>
       </main>
       
@@ -303,6 +420,21 @@ export default function App() {
         isOpen={isCloneDialogVisible}
         onClose={() => setIsCloneDialogVisible(false)}
         onClone={handleClone}
+      />
+
+      <SaveDialog
+        isOpen={isSaveDialogVisible}
+        onClose={() => setIsSaveDialogVisible(false)}
+        onSave={handleSave}
+        existingProjects={Object.keys(savedProjects)}
+      />
+
+      <LoadDialog
+        isOpen={isLoadDialogVisible}
+        onClose={() => setIsLoadDialogVisible(false)}
+        onLoad={handleLoad}
+        onDelete={handleDelete}
+        projects={savedProjects}
       />
     </div>
   );

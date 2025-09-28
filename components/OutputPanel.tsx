@@ -61,7 +61,7 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ code, onCodeChange, pr
     return () => {
       URL.revokeObjectURL(url);
     };
-  }, [code, previewUrl]);
+  }, [code]);
 
   const getEditorOptions = (): monaco.editor.IStandaloneEditorConstructionOptions => ({
       automaticLayout: true,
@@ -77,16 +77,33 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ code, onCodeChange, pr
       lineNumbersMinChars: 3,
       renderLineHighlight: 'line',
   });
+  
+  const updateUndoRedoState = useCallback(() => {
+    const activeEditor = isDiffVisible
+      ? diffEditorInstanceRef.current?.getModifiedEditor()
+      : editorInstanceRef.current;
+    
+    const model = activeEditor?.getModel();
+    if (model) {
+        setCanUndo(model.canUndo());
+        setCanRedo(model.canRedo());
+    } else {
+        setCanUndo(false);
+        setCanRedo(false);
+    }
+  }, [isDiffVisible]);
 
-  // Monaco editor initialization
+
+  // Monaco editor initialization (runs once)
   useEffect(() => {
-    if (!editorContainerRef.current || editorInstanceRef.current) return;
+    if (!editorContainerRef.current) return;
+
+    let editor: monaco.editor.IStandaloneCodeEditor;
 
     (window as any).require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.49.0/min/vs' }});
     (window as any).require(['vs/editor/editor.main'], (monaco: any) => {
         monacoRef.current = monaco;
 
-        // Custom themes to match the application's look and feel
         monaco.editor.defineTheme('ai-builder-dark', {
             base: 'vs-dark', inherit: true, rules: [],
             colors: {
@@ -104,7 +121,7 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ code, onCodeChange, pr
             }
         });
         
-        const editor = monaco.editor.create(editorContainerRef.current, {
+        editor = monaco.editor.create(editorContainerRef.current, {
             ...getEditorOptions(),
             value: code,
             language: 'html',
@@ -112,17 +129,8 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ code, onCodeChange, pr
         });
         editorInstanceRef.current = editor;
 
-        const updateUndoRedoState = () => {
-            const model = editor.getModel();
-            if (model) {
-                setCanUndo(model.canUndo());
-                setCanRedo(model.canRedo());
-            }
-        };
-
         editor.onDidChangeModelContent(() => {
-            const currentCode = editor.getValue();
-            onCodeChange(currentCode);
+            onCodeChange(editor.getValue());
             updateUndoRedoState();
 
             if (saveStatusTimer.current) window.clearTimeout(saveStatusTimer.current);
@@ -138,7 +146,7 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ code, onCodeChange, pr
     return () => {
         editorInstanceRef.current?.dispose();
     };
-  }, [code, onCodeChange, theme]);
+  }, []); // Intentionally empty to run only once
 
   // Diff editor lifecycle
   useEffect(() => {
@@ -150,55 +158,40 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ code, onCodeChange, pr
 
         const diffEditor = monaco.editor.createDiffEditor(diffEditorContainerRef.current, {
             ...getEditorOptions(),
+            theme: theme === 'dark' ? 'ai-builder-dark' : 'ai-builder-light',
             readOnly: false,
         });
         diffEditor.setModel({ original: originalModel, modified: modifiedModel });
         diffEditorInstanceRef.current = diffEditor;
-        
-        const newTheme = theme === 'dark' ? 'ai-builder-dark' : 'ai-builder-light';
-        diffEditor.getOriginalEditor().updateOptions({ theme: newTheme });
-        diffEditor.getModifiedEditor().updateOptions({ theme: newTheme });
 
         const modifiedEditor = diffEditor.getModifiedEditor();
-        const updateUndoRedoState = () => {
-            const model = modifiedEditor.getModel();
-            if (model) {
-                setCanUndo(model.canUndo());
-                setCanRedo(model.canRedo());
-            }
-        };
 
         modifiedEditor.onDidChangeModelContent(() => {
-            const currentCode = modifiedEditor.getValue();
-            onCodeChange(currentCode);
+            onCodeChange(modifiedEditor.getValue());
             updateUndoRedoState();
         });
 
         modifiedEditor.onDidBlurEditorText(() => modifiedEditor.getAction('editor.action.formatDocument')?.run());
 
         updateUndoRedoState();
+
     } else if (!isDiffVisible && diffEditorInstanceRef.current) {
         diffEditorInstanceRef.current.dispose();
         diffEditorInstanceRef.current = null;
     }
-  }, [isDiffVisible, code, previousCode, onCodeChange, theme]);
+  }, [isDiffVisible, previousCode, code, theme, onCodeChange, updateUndoRedoState]);
   
   // Sync code prop with editor values and auto-format on generation
   useEffect(() => {
-    const editor = editorInstanceRef.current;
-    if (editor && editor.getValue() !== code) {
-      editor.setValue(code);
-      // Format the document after setting new code, pushing it to the end of the event queue.
-      setTimeout(() => editor.getAction('editor.action.formatDocument')?.run(), 0);
+    // Only update if the content differs, to avoid resetting cursor/view state
+    if (editorInstanceRef.current && editorInstanceRef.current.getValue() !== code) {
+      editorInstanceRef.current.setValue(code);
+      setTimeout(() => editorInstanceRef.current?.getAction('editor.action.formatDocument')?.run(), 0);
     }
-    const diffEditor = diffEditorInstanceRef.current;
-    if (diffEditor) {
-      const modifiedEditor = diffEditor.getModifiedEditor();
-      if (modifiedEditor.getValue() !== code) {
-        modifiedEditor.setValue(code);
-        // Also format the modified editor in the diff view.
-        setTimeout(() => modifiedEditor.getAction('editor.action.formatDocument')?.run(), 0);
-      }
+    const modifiedEditor = diffEditorInstanceRef.current?.getModifiedEditor();
+    if (modifiedEditor && modifiedEditor.getValue() !== code) {
+      modifiedEditor.setValue(code);
+      setTimeout(() => modifiedEditor.getAction('editor.action.formatDocument')?.run(), 0);
     }
   }, [code]);
 
@@ -206,12 +199,7 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ code, onCodeChange, pr
   useEffect(() => {
       if (monacoRef.current) {
           const newTheme = theme === 'dark' ? 'ai-builder-dark' : 'ai-builder-light';
-          editorInstanceRef.current?.updateOptions({ theme: newTheme });
-          const diffEditor = diffEditorInstanceRef.current;
-          if (diffEditor) {
-            diffEditor.getOriginalEditor().updateOptions({ theme: newTheme });
-            diffEditor.getModifiedEditor().updateOptions({ theme: newTheme });
-          }
+          monacoRef.current.editor.setTheme(newTheme);
       }
   }, [theme]);
 

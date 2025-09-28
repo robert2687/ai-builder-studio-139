@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import type { LoadingState, CodeSourceInfo } from '../types';
-import { GenerateIcon, LoadingSpinner, ClearIcon, UploadIcon, GithubIcon, FileTextIcon, EditIcon } from './icons';
+import { GenerateIcon, LoadingSpinner, ClearIcon, UploadIcon, GithubIcon, FileTextIcon, EditIcon, SaveIcon, LoadIcon } from './icons';
 import { ErrorDisplay } from './ErrorDisplay';
 
 interface ControlPanelProps {
@@ -10,10 +10,16 @@ interface ControlPanelProps {
   onClear: () => void;
   onFileUpload: (fileContent: string, fileName: string) => void;
   onCloneRequest: () => void;
+  onSaveRequest: () => void;
+  onLoadRequest: () => void;
+  isCodePresent: boolean;
   loadingState: LoadingState;
   error: string | null;
   onErrorDismiss: () => void;
   codeSourceInfo: CodeSourceInfo | null;
+  refinementPrompt: string;
+  setRefinementPrompt: (prompt: string) => void;
+  onRefine: () => void;
 }
 
 const examplePrompts = [
@@ -57,7 +63,7 @@ const PromptInput: React.FC<Pick<ControlPanelProps, 'prompt' | 'setPrompt' | 'lo
     );
 };
 
-const SourceDisplay: React.FC<{ source: CodeSourceInfo, onClear: () => void }> = ({ source, onClear }) => {
+const SourceDisplay: React.FC<{ source: CodeSourceInfo }> = ({ source }) => {
     let icon, title, name;
     switch (source.type) {
         case 'file':
@@ -75,10 +81,15 @@ const SourceDisplay: React.FC<{ source: CodeSourceInfo, onClear: () => void }> =
             title = 'Generated from Prompt';
             name = `"${source.name}"`;
             break;
+        case 'saved':
+            icon = <SaveIcon />;
+            title = 'Saved Project';
+            name = source.name;
+            break;
     }
 
     return (
-        <div className="bg-gray-100 dark:bg-gray-900/50 rounded-lg p-4 h-full flex flex-col justify-center">
+        <div className="bg-gray-100 dark:bg-gray-900/50 rounded-lg p-4">
             <div className="text-sm text-gray-500 dark:text-gray-400 mb-2">{title}</div>
             <div className="flex items-start gap-3">
                 <div className="text-indigo-600 dark:text-indigo-400 mt-1">{icon}</div>
@@ -86,19 +97,18 @@ const SourceDisplay: React.FC<{ source: CodeSourceInfo, onClear: () => void }> =
                     {name}
                 </p>
             </div>
-             <button
-                onClick={onClear}
-                className="w-full mt-4 bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center transition-colors duration-200"
-            >
-              Start Over
-            </button>
         </div>
     );
 };
 
 
-export const ControlPanel: React.FC<ControlPanelProps> = ({ prompt, setPrompt, onGenerate, onClear, onFileUpload, onCloneRequest, loadingState, error, onErrorDismiss, codeSourceInfo }) => {
+export const ControlPanel: React.FC<ControlPanelProps> = ({ 
+    prompt, setPrompt, onGenerate, onClear, onFileUpload, onCloneRequest, 
+    onSaveRequest, onLoadRequest, isCodePresent, loadingState, error, onErrorDismiss, 
+    codeSourceInfo, refinementPrompt, setRefinementPrompt, onRefine
+}) => {
   const isGenerating = loadingState === 'generate';
+  const isRefining = loadingState === 'refine';
   const isBusy = loadingState !== 'idle';
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isProjectLoaded = !!codeSourceInfo;
@@ -118,8 +128,49 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({ prompt, setPrompt, o
     }
   };
 
+  const PrimaryActionButton = () => {
+    if (isProjectLoaded) {
+      return (
+        <button
+          onClick={onRefine}
+          disabled={isBusy}
+          className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transition-all duration-300 transform hover:scale-105 shadow-lg"
+        >
+          {isRefining ? (
+            <>
+              <LoadingSpinner className="animate-spin -ml-1 mr-3 h-5 w-5" />
+              <span>Refining...</span>
+            </>
+          ) : (
+            'Refine Application'
+          )}
+        </button>
+      );
+    }
+    return (
+      <button
+        onClick={onGenerate}
+        disabled={isBusy}
+        className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-all duration-300 transform hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100"
+      >
+        {isGenerating ? (
+          <>
+            <LoadingSpinner className="animate-spin -ml-1 mr-3 h-5 w-5" />
+            <span>Generating...</span>
+          </>
+        ) : (
+          <>
+            <GenerateIcon />
+            <span>Generate Application</span>
+          </>
+        )}
+      </button>
+    );
+  };
+
   return (
     <>
+      {/* Section 1: Source or Prompt */}
       <div className="p-6 border-b border-gray-200 dark:border-gray-700">
         <h2 className="text-lg font-semibold text-indigo-600 dark:text-indigo-300">
           {isProjectLoaded ? '1. Application Source' : '1. Describe Your Application'}
@@ -131,22 +182,41 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({ prompt, setPrompt, o
           }
         </p>
       </div>
-
-      <div className="flex-grow p-6 flex flex-col">
+      <div className={`p-6 ${isProjectLoaded ? '' : 'flex-grow flex flex-col'}`}>
         {isProjectLoaded ? (
-          <SourceDisplay source={codeSourceInfo} onClear={onClear} />
+          <SourceDisplay source={codeSourceInfo} />
         ) : (
           <PromptInput prompt={prompt} setPrompt={setPrompt} loadingState={loadingState} />
         )}
       </div>
 
+      {/* Section 2: Task Input (only in refine mode) */}
+      {isProjectLoaded && (
+        <>
+          <div className="p-6 border-y border-gray-200 dark:border-gray-700">
+            <h2 className="text-lg font-semibold text-indigo-600 dark:text-indigo-300">2. Describe Your Task</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Tell the AI what changes you'd like to make to the application.</p>
+          </div>
+          <div className="flex-grow p-6 flex flex-col">
+             <textarea
+              value={refinementPrompt}
+              onChange={(e) => setRefinementPrompt(e.target.value)}
+              className="w-full flex-grow p-4 bg-gray-50 dark:bg-gray-900/50 text-gray-800 dark:text-gray-200 rounded-lg border border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-200 resize-none placeholder-gray-400 dark:placeholder-gray-500"
+              placeholder="E.g., 'Change the button color to green.'"
+              disabled={isBusy}
+            />
+          </div>
+        </>
+      )}
+
+      {/* Footer Actions */}
       <div className="p-6 border-t border-gray-200 dark:border-gray-700 space-y-3">
         {error && (
             <div className="pb-2">
                 <ErrorDisplay message={error} onDismiss={onErrorDismiss} />
             </div>
         )}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={isBusy}
@@ -171,33 +241,31 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({ prompt, setPrompt, o
               Clone
             </button>
             <button
-              onClick={onClear}
+              onClick={onSaveRequest}
+              disabled={isBusy || !isCodePresent}
+              className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <SaveIcon />
+              Save
+            </button>
+            <button
+              onClick={onLoadRequest}
               disabled={isBusy}
               className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <ClearIcon />
-              Clear
+              <LoadIcon />
+              Load
             </button>
         </div>
-        {!isProjectLoaded && (
-          <button
-            onClick={onGenerate}
+         <button
+            onClick={onClear}
             disabled={isBusy}
-            className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-all duration-300 transform hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100"
+            className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isGenerating ? (
-              <>
-                <LoadingSpinner className="animate-spin -ml-1 mr-3 h-5 w-5" />
-                <span>Generating...</span>
-              </>
-            ) : (
-              <>
-                <GenerateIcon />
-                <span>Generate Application</span>
-              </>
-            )}
+            <ClearIcon />
+            Clear All
           </button>
-        )}
+        <PrimaryActionButton />
       </div>
     </>
   );

@@ -8,11 +8,11 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const getSystemPrompt = () => `You are an expert web developer creating a complete, single-file HTML application.
 CRITICAL INSTRUCTIONS:
-1. ALL code (HTML, CSS, JS) MUST be in one .html file.
+1. ALL code (HTML, CSS, JS) MUST be in one .html file. This means NO external JS files or dependencies besides the provided Tailwind and Inter font CDNs. NO ES module imports for external libraries (e.g., 'import React from "react"' is forbidden).
 2. You MUST use Tailwind CSS via CDN: <script src="https://cdn.tailwindcss.com"></script>.
-3. The code must be fully functional and runnable in a browser.
+3. The code must be fully functional and runnable in a browser with vanilla JavaScript. Do not use React or any other framework in the generated code itself.
 4. Your entire response MUST BE ONLY the raw HTML code. Do not include any explanations, comments, or markdown formatting like \`\`\`html.
-5. Create a visually appealing, modern, responsive UI using the 'Inter' font via Google Fonts CDN.
+5. Create a visually appealing, modern, responsive UI using the 'Inter' font via Google Fonts CDN. For icons, you MUST use inline SVGs within the HTML.
 6. Implement the user's core functionality requested.`;
 
 const getRefinementSystemPrompt = (originalPrompt: string, currentCode: string, refinementRequest: string) => `You are an expert web developer modifying an existing single-file HTML application.
@@ -22,6 +22,7 @@ You will receive the CURRENT HTML code and a new modification request. Your task
 CRITICAL INSTRUCTIONS:
 1. Your response MUST be ONLY the full, raw HTML code for the updated application. Do not include any explanations, comments, or markdown formatting like \`\`\`html.
 2. Ensure the final code is still a complete, runnable, single file using Tailwind CSS from the CDN.
+3. The code must be fully functional with vanilla JavaScript. Do not introduce external libraries, frameworks (like React), or ES module imports. For any new icons, you MUST use inline SVGs.
 
 HERE IS THE CURRENT CODE:
 ${currentCode}
