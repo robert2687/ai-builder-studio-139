@@ -101,8 +101,15 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
       contextmenu: true,
       quickSuggestions: { other: true, comments: false, strings: true },
       suggestOnTriggerCharacters: true,
-      folding: true, // Explicitly enable code folding.
-      showFoldingControls: 'always', // Make folding controls always visible for better UX.
+      folding: true,
+      showFoldingControls: 'always',
+      // FIX: The `lightbulb.enabled` option now expects a string literal type ('on' | 'off' | 'onCode') instead of a boolean.
+      lightbulb: { enabled: 'on' },
+      "semanticHighlighting.enabled": true,
+      // Enable breadcrumbs for symbol navigation/outlining
+      breadcrumb: {
+          enabled: true,
+      },
   });
   
   const updateUndoRedoState = useCallback(() => {
@@ -131,6 +138,18 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
     (window as any).require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.49.0/min/vs' }});
     (window as any).require(['vs/editor/editor.main'], (monaco: any) => {
         monacoRef.current = monaco;
+        
+        // Configure JavaScript language service for better intellisense and navigation
+        monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
+            target: monaco.languages.typescript.ScriptTarget.ES2020,
+            allowNonTsExtensions: true,
+            checkJs: true, // Enable type checking for JS files
+            lib: ['es2020', 'dom'] // Add DOM library for browser APIs
+        });
+        monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+            noSemanticValidation: false,
+            noSyntaxValidation: false,
+        });
 
         monaco.editor.defineTheme('ai-builder-dark', {
             base: 'vs-dark', inherit: true, rules: [],
@@ -138,6 +157,7 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
                 'editor.background': '#1F2937',
                 'editorGutter.background': '#1F2937',
                 'editor.lineHighlightBackground': '#374151',
+                'breadcrumb.background': '#1F2937',
             }
         });
         monaco.editor.defineTheme('ai-builder-light', {
@@ -146,6 +166,7 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
                 'editor.background': '#F9FAFB',
                 'editorGutter.background': '#F9FAFB',
                 'editor.lineHighlightBackground': '#f3f4f6',
+                'breadcrumb.background': '#F9FAFB',
             }
         });
         
