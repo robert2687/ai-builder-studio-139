@@ -1,6 +1,6 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import type { LoadingState, CodeSourceInfo } from '../types';
-import { GenerateIcon, LoadingSpinner, ClearIcon, UploadIcon, GithubIcon, FileTextIcon, EditIcon, SaveIcon, LoadIcon } from './icons';
+import { GenerateIcon, LoadingSpinner, ClearIcon, UploadIcon, GithubIcon, FileTextIcon, EditIcon, SaveIcon, LoadIcon, MenuIcon, HistoryIcon } from './icons';
 import { ErrorDisplay } from './ErrorDisplay';
 
 interface ControlPanelProps {
@@ -12,6 +12,7 @@ interface ControlPanelProps {
   onCloneRequest: () => void;
   onSaveRequest: () => void;
   onLoadRequest: () => void;
+  onHistoryRequest: () => void;
   isCodePresent: boolean;
   loadingState: LoadingState;
   error: string | null;
@@ -104,7 +105,7 @@ const SourceDisplay: React.FC<{ source: CodeSourceInfo }> = ({ source }) => {
 
 export const ControlPanel: React.FC<ControlPanelProps> = ({ 
     prompt, setPrompt, onGenerate, onClear, onFileUpload, onCloneRequest, 
-    onSaveRequest, onLoadRequest, isCodePresent, loadingState, error, onErrorDismiss, 
+    onSaveRequest, onLoadRequest, onHistoryRequest, isCodePresent, loadingState, error, onErrorDismiss, 
     codeSourceInfo, refinementPrompt, setRefinementPrompt, onRefine
 }) => {
   const isGenerating = loadingState === 'generate';
@@ -112,6 +113,21 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const isBusy = loadingState !== 'idle';
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isProjectLoaded = !!codeSourceInfo;
+
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -142,7 +158,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               <span>Refining...</span>
             </>
           ) : (
-            'Refine Application'
+            <>
+              <GenerateIcon />
+              <span>Refine Application</span>
+            </>
           )}
         </button>
       );
@@ -167,6 +186,58 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       </button>
     );
   };
+  
+  const SecondaryActionButtons = () => (
+    <>
+      <button
+        onClick={() => fileInputRef.current?.click()}
+        disabled={isBusy}
+        className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <UploadIcon />
+        Upload
+      </button>
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        accept=".html,.htm"
+        className="hidden"
+      />
+      <button
+        onClick={onCloneRequest}
+        disabled={isBusy}
+        className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <GithubIcon className="w-5 h-5 mr-2" />
+        Clone
+      </button>
+      <button
+        onClick={onSaveRequest}
+        disabled={isBusy || !isCodePresent}
+        className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <SaveIcon />
+        Save
+      </button>
+      <button
+        onClick={onLoadRequest}
+        disabled={isBusy}
+        className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <LoadIcon />
+        Load
+      </button>
+      <button
+        onClick={onHistoryRequest}
+        disabled={isBusy || !isCodePresent}
+        className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <HistoryIcon />
+        History
+      </button>
+    </>
+  );
 
   return (
     <>
@@ -216,56 +287,43 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 <ErrorDisplay message={error} onDismiss={onErrorDismiss} />
             </div>
         )}
-        <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isBusy}
-              className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <UploadIcon />
-              Upload
-            </button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              accept=".html,.htm"
-              className="hidden"
-            />
-            <button
-              onClick={onCloneRequest}
-              disabled={isBusy}
-              className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <GithubIcon className="w-5 h-5 mr-2" />
-              Clone
-            </button>
-            <button
-              onClick={onSaveRequest}
-              disabled={isBusy || !isCodePresent}
-              className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <SaveIcon />
-              Save
-            </button>
-            <button
-              onClick={onLoadRequest}
-              disabled={isBusy}
-              className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <LoadIcon />
-              Load
-            </button>
+        
+        {/* Desktop Buttons */}
+        <div className="hidden md:grid grid-cols-3 gap-3">
+          <SecondaryActionButtons />
         </div>
-         <button
-            onClick={onClear}
+
+        {/* Mobile Menu */}
+        <div className="md:hidden relative" ref={menuRef}>
+          <button
+            onClick={() => setIsMenuOpen(prev => !prev)}
             disabled={isBusy}
             className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <ClearIcon />
-            Clear All
+            <MenuIcon />
+            <span>More Actions</span>
           </button>
-        <PrimaryActionButton />
+          {isMenuOpen && (
+            <div className="absolute bottom-full mb-2 w-full grid grid-cols-2 gap-3 p-3 bg-gray-100 dark:bg-gray-700/95 backdrop-blur-sm rounded-lg shadow-lg ring-1 ring-black/5 z-20">
+              <SecondaryActionButtons />
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col-reverse sm:flex-row gap-3">
+            <button
+              onClick={onClear}
+              disabled={isBusy}
+              title="Clear All"
+              className="sm:w-auto w-full bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ClearIcon />
+              <span className="sm:hidden ml-2">Clear All</span>
+            </button>
+            <div className="flex-grow">
+              <PrimaryActionButton />
+            </div>
+          </div>
       </div>
     </>
   );

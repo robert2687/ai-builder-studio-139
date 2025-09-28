@@ -11,3 +11,8 @@ export interface SavedProject {
   initialPrompt: string | null;
   codeSourceInfo: CodeSourceInfo | null;
 }
+
+export interface CodeVersion {
+  code: string;
+  timestamp: number;
+}

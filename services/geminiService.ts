@@ -29,6 +29,32 @@ ${currentCode}
 
 **Modification Request:** "${refinementRequest}"`;
 
+const getCompletionSystemPrompt = (
+    languageContext: string, 
+    codeBefore: string, 
+    codeAfter: string
+) => `You are an expert pair programmer AI, providing code completions within a single-file web application. The application uses vanilla JavaScript and Tailwind CSS for styling.
+
+CURRENT CONTEXT: The user is editing ${languageContext}.
+
+CRITICAL INSTRUCTIONS:
+1.  Your response MUST be ONLY the raw code snippet for completion. Do NOT include explanations, comments, or markdown formatting like \`\`\`.
+2.  Provide a concise, idiomatic, and efficient code completion that seamlessly fits between the user's existing code.
+3.  Do NOT repeat any code the user has already typed (from the "CODE BEFORE CURSOR" or "CODE AFTER CURSOR" sections).
+4.  If the context is HTML or JavaScript, you MUST use Tailwind CSS classes for styling. Do not use inline styles or create CSS in a <style> tag unless the context is explicitly 'CSS within a <style> tag'.
+5.  If providing a multi-line snippet, keep it short and logical (e.g., completing a function block, an HTML element with children, or a CSS rule).
+
+CODE BEFORE CURSOR:
+\`\`\`
+${codeBefore}
+\`\`\`
+
+CODE AFTER CURSOR:
+\`\`\`
+${codeAfter}
+\`\`\`
+
+Your suggested code completion:`;
 
 const callApi = async (prompt: string): Promise<string> => {
     try {
@@ -68,7 +94,7 @@ const callApi = async (prompt: string): Promise<string> => {
         }
         
         // Clean up potential markdown formatting just in case
-        return code.replace(/^```html\s*|```\s*$/g, '').trim();
+        return code.replace(/^```[a-z]*\s*|```\s*$/g, '').trim();
 
     } catch (error) {
         console.error("Gemini API Error:", error);
@@ -102,4 +128,28 @@ export const generateApp = async (userPrompt: string): Promise<string> => {
 export const refineApp = async (originalPrompt: string, currentCode: string, refinementRequest: string): Promise<string> => {
     const fullPrompt = getRefinementSystemPrompt(originalPrompt, currentCode, refinementRequest);
     return callApi(fullPrompt);
+};
+
+export const getCodeCompletion = async (languageContext: string, codeBefore: string, codeAfter: string): Promise<string> => {
+    const prompt = getCompletionSystemPrompt(languageContext, codeBefore, codeAfter);
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                temperature: 0.1,
+                maxOutputTokens: 100,
+                thinkingConfig: { thinkingBudget: 20 },
+            },
+        });
+        const code = response.text;
+        if (!code) {
+            return '';
+        }
+        return code.replace(/^```[a-z]*\s*|```\s*$/g, '').trim();
+    } catch (error) {
+        console.error("Gemini Code Completion Error:", error);
+        // Don't throw here, just fail gracefully so the editor doesn't crash
+        return '';
+    }
 };

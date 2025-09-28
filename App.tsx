@@ -1,13 +1,14 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { OutputPanel } from './components/OutputPanel';
-import type { ActiveTab, LoadingState, Theme, CodeSourceInfo, SavedProject } from './types';
+import type { ActiveTab, LoadingState, Theme, CodeSourceInfo, SavedProject, CodeVersion } from './types';
 import { generateApp, refineApp } from './services/geminiService';
 import { MoonIcon, SunIcon } from './components/icons';
 import { ConfirmationDialog } from './components/ConfirmationDialog';
 import { GithubCloneDialog } from './components/GithubCloneDialog';
 import { SaveDialog } from './components/SaveDialog';
 import { LoadDialog } from './components/LoadDialog';
+import { VersionHistoryDialog } from './components/VersionHistoryDialog';
 import * as storage from './services/storageService';
 
 export default function App() {
@@ -26,6 +27,13 @@ export default function App() {
   const [isSaveDialogVisible, setIsSaveDialogVisible] = useState(false);
   const [isLoadDialogVisible, setIsLoadDialogVisible] = useState(false);
   const [savedProjects, setSavedProjects] = useState<Record<string, SavedProject>>({});
+  
+  // Version History State
+  const [versionHistory, setVersionHistory] = useState<CodeVersion[]>([]);
+  const [isHistoryDialogVisible, setIsHistoryDialogVisible] = useState(false);
+  const [versionToRestore, setVersionToRestore] = useState<CodeVersion | null>(null);
+  const [isRestoreConfirmVisible, setIsRestoreConfirmVisible] = useState(false);
+  const [diffTarget, setDiffTarget] = useState<{ original: string; modified: string; } | null>(null);
 
   // Resizable panel state
   const mainContainerRef = useRef<HTMLDivElement>(null);
@@ -43,9 +51,10 @@ export default function App() {
     setTheme(initialTheme);
   }, []);
   
-  // Load saved projects on initial mount
+  // Load saved projects & history on initial mount
   useEffect(() => {
     setSavedProjects(storage.getProjects());
+    setVersionHistory(storage.getHistory());
   }, []);
 
   useEffect(() => {
@@ -148,7 +157,7 @@ export default function App() {
     setIsResizing(false);
   }, []);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+  const handleMouseMove = useCallback((e: MouseEvent | React.MouseEvent) => {
     if (!isResizing || !mainContainerRef.current) return;
 
     const containerRect = mainContainerRef.current.getBoundingClientRect();
@@ -177,6 +186,7 @@ export default function App() {
       const code = await generateApp(prompt);
       setGeneratedCode(code);
       setCodeSourceInfo({ type: 'prompt', name: prompt });
+      setVersionHistory(storage.addToHistory(code));
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
       setError(`Generation failed: ${errorMessage}`);
@@ -200,6 +210,7 @@ export default function App() {
       const code = await refineApp(initialPrompt || '', generatedCode, refinementPrompt);
       setGeneratedCode(code);
       setRefinementPrompt('');
+      setVersionHistory(storage.addToHistory(code));
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
       setError(`Refinement failed: ${errorMessage}`);
@@ -218,10 +229,13 @@ export default function App() {
     setError(null);
     setActiveTab('preview');
     setCodeSourceInfo(null);
+    setVersionHistory(storage.addToHistory('')); // Clears history by saving an empty string, then we'll clear it. A bit hacky.
     localStorage.removeItem('ai-builder-studio-code');
     localStorage.removeItem('ai-builder-studio-initial-prompt');
     localStorage.removeItem('ai-builder-studio-previous-code');
     localStorage.removeItem('ai-builder-studio-source-info');
+    localStorage.removeItem('ai-builder-version-history');
+    setVersionHistory([]);
     setIsClearConfirmVisible(false);
   }, []);
 
@@ -274,6 +288,7 @@ export default function App() {
     setInitialPrompt(newInitialPrompt);
     setCodeSourceInfo({ type: 'file', name: fileName });
     localStorage.setItem('ai-builder-studio-initial-prompt', newInitialPrompt);
+    setVersionHistory(storage.addToHistory(processedCode));
   }, []);
 
   const handleClone = useCallback((fileContent: string, repoUrl: string) => {
@@ -315,6 +330,7 @@ export default function App() {
         setPreviousCode(null);
         setRefinementPrompt('');
         setError(null);
+        setVersionHistory(storage.addToHistory(project.generatedCode));
     }
   }, [savedProjects]);
 
@@ -326,6 +342,44 @@ export default function App() {
       setError((e as Error).message);
     }
   }, []);
+
+  // Version History handlers
+  const handleHistoryRequest = useCallback(() => {
+      setIsHistoryDialogVisible(true);
+  }, []);
+
+  const handleRestoreRequest = useCallback((version: CodeVersion) => {
+      setVersionToRestore(version);
+      setIsRestoreConfirmVisible(true);
+  }, []);
+
+  const confirmRestore = useCallback(() => {
+      if (versionToRestore) {
+          setPreviousCode(generatedCode);
+          setGeneratedCode(versionToRestore.code);
+          setVersionHistory(storage.addToHistory(versionToRestore.code));
+      }
+      setVersionToRestore(null);
+      setIsRestoreConfirmVisible(false);
+      setIsHistoryDialogVisible(false);
+  }, [versionToRestore, generatedCode]);
+
+  const cancelRestore = useCallback(() => {
+      setVersionToRestore(null);
+      setIsRestoreConfirmVisible(false);
+  }, []);
+
+  const handleCompareWithHistory = useCallback((version: CodeVersion) => {
+      setDiffTarget({ original: version.code, modified: generatedCode });
+      setActiveTab('code');
+      setIsHistoryDialogVisible(false);
+  }, [generatedCode]);
+  
+  const handleCompareWithPrevious = useCallback(() => {
+    if (previousCode) {
+        setDiffTarget({ original: previousCode, modified: generatedCode });
+    }
+  }, [previousCode, generatedCode]);
 
   return (
     <div className="flex flex-col h-screen text-gray-800 dark:text-gray-200 antialiased transition-colors duration-300">
@@ -345,16 +399,16 @@ export default function App() {
       </header>
 
       <main
-        className="flex-grow p-6 overflow-hidden"
-        onMouseMove={isResizing ? handleMouseMove : undefined}
+        className="flex-grow p-4 md:p-6 overflow-hidden"
+        onMouseMove={isResizing ? (e) => handleMouseMove(e.nativeEvent) : undefined}
         onMouseUp={isResizing ? handleMouseUp : undefined}
         onMouseLeave={isResizing ? handleMouseUp : undefined}
       >
-        <div ref={mainContainerRef} className="w-full h-full flex flex-col lg:flex-row items-stretch">
+        <div ref={mainContainerRef} className="w-full h-full flex flex-col md:flex-row items-stretch">
             {/* Control Panel Wrapper */}
             <div
-              className="flex-shrink-0 lg:h-full mb-6 lg:mb-0"
-              style={{ flexBasis: `calc(${panelWidth}% - 0.75rem)` }}
+              className="flex-shrink-0 md:h-full mb-4 md:mb-0"
+              style={{ flexBasis: `calc(${panelWidth}% - 0.5rem)` }}
             >
               <div className="flex flex-col w-full h-full bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden ring-1 ring-gray-200 dark:ring-gray-700">
                  <ControlPanel
@@ -366,6 +420,7 @@ export default function App() {
                     onCloneRequest={() => setIsCloneDialogVisible(true)}
                     onSaveRequest={requestSave}
                     onLoadRequest={requestLoad}
+                    onHistoryRequest={handleHistoryRequest}
                     isCodePresent={!!generatedCode}
                     loadingState={loadingState}
                     error={error}
@@ -381,7 +436,7 @@ export default function App() {
             {/* Resizer */}
             <div
               onMouseDown={handleMouseDown}
-              className="hidden lg:flex w-6 flex-shrink-0 cursor-col-resize group items-center justify-center"
+              className="hidden md:flex w-4 flex-shrink-0 cursor-col-resize group items-center justify-center"
               style={{ touchAction: 'none' }}
             >
               <div className="w-1 h-12 bg-gray-300 dark:bg-gray-600 rounded-full group-hover:bg-indigo-500 transition-colors" />
@@ -389,8 +444,8 @@ export default function App() {
             
             {/* Output Panel Wrapper */}
             <div
-              className="flex-1 lg:h-full"
-              style={{ flexBasis: `calc(${100 - panelWidth}% - 0.75rem)` }}
+              className="flex-1 md:h-full min-h-0"
+              style={{ flexBasis: `calc(${100 - panelWidth}% - 0.5rem)` }}
             >
               <div className="flex flex-col w-full h-full bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden ring-1 ring-gray-200 dark:ring-gray-700">
                 <OutputPanel
@@ -401,6 +456,9 @@ export default function App() {
                   setActiveTab={setActiveTab}
                   loadingState={loadingState}
                   theme={theme}
+                  diffTarget={diffTarget}
+                  onCloseDiff={() => setDiffTarget(null)}
+                  onCompareRequest={handleCompareWithPrevious}
                 />
               </div>
             </div>
@@ -410,10 +468,19 @@ export default function App() {
       <ConfirmationDialog
         isOpen={isClearConfirmVisible}
         title="Clear Everything?"
-        message="Are you sure you want to clear the current application and prompt? This action cannot be undone."
+        message="Are you sure you want to clear the current application, prompts, and version history? This action cannot be undone."
         onConfirm={confirmClear}
         onCancel={cancelClear}
         confirmText="Yes, Clear All"
+      />
+      
+      <ConfirmationDialog
+        isOpen={isRestoreConfirmVisible}
+        title="Restore Version?"
+        message="Are you sure you want to restore this version? Your current code will be overwritten, but will be available in the version history."
+        onConfirm={confirmRestore}
+        onCancel={cancelRestore}
+        confirmText="Yes, Restore"
       />
 
       <GithubCloneDialog
@@ -435,6 +502,14 @@ export default function App() {
         onLoad={handleLoad}
         onDelete={handleDelete}
         projects={savedProjects}
+      />
+
+      <VersionHistoryDialog
+        isOpen={isHistoryDialogVisible}
+        onClose={() => setIsHistoryDialogVisible(false)}
+        onRestore={handleRestoreRequest}
+        onCompare={handleCompareWithHistory}
+        history={versionHistory}
       />
     </div>
   );
